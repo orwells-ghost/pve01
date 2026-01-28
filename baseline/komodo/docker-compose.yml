@@ -1,0 +1,32 @@
+services:
+  komodo:
+    image: ghcr.io/moghtech/komodo-core:latest
+    container_name: komodo
+    restart: unless-stopped
+    ports:
+      - "9120:9120"
+    volumes:
+      - ./data:/data
+    environment:
+      # REQUIRED: the URL you will browse to
+      KOMODO_HOST: "http://192.168.1.200:9120"
+
+      # Enable username/password login
+      KOMODO_LOCAL_AUTH: "true"
+
+      # Optional but recommended: initialize admin on first boot
+      KOMODO_INIT_ADMIN_USERNAME: "admin"
+      KOMODO_INIT_ADMIN_PASSWORD: "change-me-now"
+
+      # 
+      KOMODO_DATABASE_URI: mongodb://mongo:27017/komodo
+      KOMODO_SECRET_KEY: k4klxlx,5Sk4l
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:7
+    container_name: komodo-mongo
+    restart: unless-stopped
+    volumes:
+      - ./mongo:/data/db
