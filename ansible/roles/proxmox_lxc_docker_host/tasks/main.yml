@@ -129,23 +129,27 @@
   args:
     executable: /bin/bash
 
-- name: Set allowed_ips and passkeys in periphery config
+- name: Write periphery.config.toml with allowlist and passkeys placeholder
   shell: |
     set -euo pipefail
-    pct exec {{ ct_id }} -- bash -lc '
-      set -euo pipefail
-      CFG=/config/periphery/periphery.config.toml
+    pct exec {{ ct_id }} -- bash -lc "cat > /config/periphery/periphery.config.toml <<'EOF'
+    # Managed by Ansible
+    # See upstream example: https://github.com/moghtech/komodo/blob/main/config/periphery.config.toml
 
-      # Replace allowed_ips array (TOML) with core + admin.
-      # This keeps the file TOML-valid and explicit.
-      perl -0777 -i -pe "s/allowed_ips\\s*=\\s*\\[[^\\]]*\\]/allowed_ips = [\\\"{{ komodo_core_ip }}\\/32\\\", \\\"{{ admin_mac_ip }}\\/32\\\"]/s" \"$CFG\" || true
+    # Only allow Komodo Core and the admin workstation to connect
+    allowed_ips = [\"{{ komodo_core_ip }}/32\", \"{{ admin_mac_ip }}/32\"]
 
-      # Ensure passkeys exists (simple: set single passkey from env if present)
-      # We'll later generate a real passkey and also set KOMODO_PASSKEY in Core env.
-      if ! grep -q \"^passkeys\" \"$CFG\"; then
-        echo \"passkeys = []\" >> \"$CFG\"
-      fi
-    '
+    # We'll set a real passkey next (empty for now)
+    passkeys = []
+
+    EOF"
+  args:
+    executable: /bin/bash
+
+- name: Restart periphery to apply config
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc 'systemctl restart periphery'
   args:
     executable: /bin/bash
 
