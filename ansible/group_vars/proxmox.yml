@@ -1,0 +1,20 @@
+# Proxmox / ZFS
+zfs_pool: "flash"
+zfs_base: "/mnt/flash/docker"
+
+# Network
+gateway_ip: "192.168.1.1"
+
+# Komodo Periphery allowlist 
+komodo_core_ip: "192.168.1.100"
+admin_mac_ip: "192.168.1.29"
+
+# LXC defaults
+lxc_bridge: "vmbr0"
+lxc_ostemplate_storage: "isos"   # where templates live (pveam list local)
+lxc_rootfs_storage: "vms"   # where CT rootfs lives
+
+
+# Debian template selection: we will auto-detect a template that contains this substring.
+lxc_template_match: "13.1-2"  # variable
+lxc_template_filename: "debian-13-standard_13.1-2_amd64.tar.zst" # lxc template filename

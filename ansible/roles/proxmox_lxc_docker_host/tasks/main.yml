@@ -1,0 +1,175 @@
+- name: Ensure base ZFS dataset exists
+  shell: |
+    set -euo pipefail
+    if ! zfs list -H -o name "{{ zfs_pool }}/docker/{{ stack_name }}" >/dev/null 2>&1; then
+      zfs create -o mountpoint="{{ zfs_base }}/{{ stack_name }}" "{{ zfs_pool }}/docker/{{ stack_name }}"
+    fi
+  args:
+    executable: /bin/bash
+
+- name: Ensure per-app ZFS datasets exist
+  shell: |
+    set -euo pipefail
+    for ds in {{ app_datasets | join(' ') }}; do
+      full="{{ zfs_pool }}/docker/{{ stack_name }}/$ds"
+      mp="{{ zfs_base }}/{{ stack_name }}/$ds"
+      if ! zfs list -H -o name "$full" >/dev/null 2>&1; then
+        zfs create -o mountpoint="$mp" "$full"
+      fi
+    done
+  args:
+    executable: /bin/bash
+
+# - name: Detect Debian LXC template filename (pveam list)
+#   shell: |
+#     set -euo pipefail
+#     pveam list {{ lxc_ostemplate_storage }} \
+#       | awk '{print $1}' \
+#       | grep -i 'debian' \
+#       | grep -F "{{ lxc_template_match }}" \
+#       | tail -n 1
+#   register: template_filename
+#   changed_when: false
+
+# - name: Fail if no template matched
+#   fail:
+#     msg: "No Debian template matched '{{ lxc_template_match }}' in pveam list {{ lxc_ostemplate_storage }}. Download it first with pveam."
+#   when: template_filename.stdout | length == 0
+- name: Ensure template exists on Proxmox storage
+  shell: |
+    set -euo pipefail
+    pveam list {{ lxc_ostemplate_storage }} | awk '{print $1}' | grep -Fx "vztmpl/{{ lxc_template_filename }}"
+  args:
+    executable: /bin/bash
+  changed_when: false
+  
+- name: Create LXC (if missing)
+  shell: |
+    set -euo pipefail
+    if ! pct status {{ ct_id }} >/dev/null 2>&1; then
+      pct create {{ ct_id }} {{ lxc_ostemplate_storage }}:vztmpl/{{ lxc_template_filename }} \
+        --hostname {{ ct_hostname }} \
+        --cores {{ ct_cores }} \
+        --memory {{ ct_memory_mb }} \
+        --swap {{ ct_swap_mb }} \
+        --rootfs {{ lxc_rootfs_storage }}:{{ ct_rootfs_gb }} \
+        --net0 name=eth0,bridge={{ lxc_bridge }},ip={{ ct_ip }}/24,gw={{ gateway_ip }} \
+        --unprivileged 0 \
+        --features nesting=1,keyctl=1 \
+        --ssh-public-keys /root/.ssh/authorized_keys \
+        --mp0 {{ zfs_base }}/{{ stack_name }},mp=/config
+    fi
+  args:
+    executable: /bin/bash
+
+- name: Start LXC
+  shell: |
+    set -euo pipefail
+    pct start {{ ct_id }} || true
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Wait for container to boot (basic)
+  shell: |
+    set -euo pipefail
+    for i in $(seq 1 30); do
+      pct exec {{ ct_id }} -- bash -lc 'echo ok' >/dev/null 2>&1 && exit 0
+      sleep 2
+    done
+    exit 1
+  args:
+    executable: /bin/bash
+
+# ---- Docker install (inside CT) ----
+- name: Install Docker Engine + Compose plugin (inside CT) via Docker APT repo
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc '
+      set -euo pipefail
+      apt-get update
+      apt-get install -y ca-certificates curl
+
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+      https://download.docker.com/linux/debian \
+      $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" \
+      > /etc/apt/sources.list.d/docker.list
+
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      systemctl enable --now docker
+
+      docker --version
+      docker compose version
+    '
+  args:
+    executable: /bin/bash
+
+# ---- Periphery config on /config (inside CT) ----
+- name: Create periphery config dir in /config
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc 'mkdir -p /config/periphery'
+  args:
+    executable: /bin/bash
+
+- name: Fetch default periphery config to /config (if missing)
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc '
+      if [ ! -f /config/periphery/periphery.config.toml ]; then
+        curl -fsSL https://raw.githubusercontent.com/moghtech/komodo/main/config/periphery.config.toml \
+          -o /config/periphery/periphery.config.toml
+      fi
+    '
+  args:
+    executable: /bin/bash
+
+- name: Set allowed_ips and passkeys in periphery config
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc '
+      set -euo pipefail
+      CFG=/config/periphery/periphery.config.toml
+
+      # Replace allowed_ips array (TOML) with core + admin.
+      # This keeps the file TOML-valid and explicit.
+      perl -0777 -i -pe "s/allowed_ips\\s*=\\s*\\[[^\\]]*\\]/allowed_ips = [\\\"{{ komodo_core_ip }}\\/32\\\", \\\"{{ admin_mac_ip }}\\/32\\\"]/s" \"$CFG\" || true
+
+      # Ensure passkeys exists (simple: set single passkey from env if present)
+      # We'll later generate a real passkey and also set KOMODO_PASSKEY in Core env.
+      if ! grep -q \"^passkeys\" \"$CFG\"; then
+        echo \"passkeys = []\" >> \"$CFG\"
+      fi
+    '
+  args:
+    executable: /bin/bash
+
+# ---- Install Periphery via official systemd script, but point /etc config to /config via symlink ----
+- name: Symlink /etc/komodo/periphery.config.toml -> /config/periphery/periphery.config.toml
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc '
+      mkdir -p /etc/komodo
+      ln -sf /config/periphery/periphery.config.toml /etc/komodo/periphery.config.toml
+    '
+  args:
+    executable: /bin/bash
+
+- name: Install periphery systemd service (official installer script)
+  shell: |
+    set -euo pipefail
+    pct exec {{ ct_id }} -- bash -lc '
+      apt-get install -y python3 curl
+      curl -fsSL https://raw.githubusercontent.com/moghtech/komodo/main/scripts/setup-periphery.py -o /tmp/setup-periphery.py
+      python3 /tmp/setup-periphery.py --force-service-file
+      systemctl enable periphery
+      systemctl restart periphery
+      systemctl --no-pager status periphery | head -n 30
+    '
+  args:
+    executable: /bin/bash

@@ -1,0 +1,21 @@
+- name: Provision infrastructure Docker-host LXC (CT100)
+  hosts: proxmox
+  gather_facts: false
+  vars:
+    stack_name: "infrastructure"
+    ct_id: 100
+    ct_hostname: "infrastructure"
+    ct_ip: "192.168.1.100"
+
+    ct_cores: 2
+    ct_memory_mb: 4096
+    ct_swap_mb: 512
+    ct_rootfs_gb: 8
+
+    # Dataset-per-container (stateful containers in this stack)
+    app_datasets:
+      - "mongo"
+      - "npm"
+      - "komodo"
+  roles: 
+    - proxmox_lxc_docker_host
