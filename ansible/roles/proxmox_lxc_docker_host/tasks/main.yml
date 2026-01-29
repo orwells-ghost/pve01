@@ -146,12 +146,21 @@
   args:
     executable: /bin/bash
 
-- name: Restart periphery to apply config
+- name: Restart periphery to apply config (only if unit exists)
   shell: |
     set -euo pipefail
-    pct exec {{ ct_id }} -- bash -lc 'systemctl restart periphery'
+    pct exec {{ ct_id }} -- bash -lc '
+      set -euo pipefail
+      if systemctl list-unit-files | grep -q "^periphery.service"; then
+        systemctl restart periphery
+      else
+        echo "periphery.service not found; skipping restart"
+      fi
+    '
   args:
     executable: /bin/bash
+  changed_when: false
+
 
 # ---- Install Periphery via official systemd script, but point /etc config to /config via symlink ----
 - name: Symlink /etc/komodo/periphery.config.toml -> /config/periphery/periphery.config.toml
@@ -168,12 +177,24 @@
   shell: |
     set -euo pipefail
     pct exec {{ ct_id }} -- bash -lc '
+      set -euo pipefail
+      apt-get update
       apt-get install -y python3 curl
+
       curl -fsSL https://raw.githubusercontent.com/moghtech/komodo/main/scripts/setup-periphery.py -o /tmp/setup-periphery.py
       python3 /tmp/setup-periphery.py --force-service-file
+
+      # Show what units exist (debug)
+      systemctl list-unit-files | grep -i periphery || true
+
+      # Fail early if unit file still not present
+      systemctl list-unit-files | grep -q "^periphery.service" || exit 42
+
+      systemctl daemon-reload
       systemctl enable periphery
       systemctl restart periphery
       systemctl --no-pager status periphery | head -n 30
     '
   args:
     executable: /bin/bash
+
