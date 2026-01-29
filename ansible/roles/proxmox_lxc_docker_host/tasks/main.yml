@@ -184,11 +184,8 @@
       curl -fsSL https://raw.githubusercontent.com/moghtech/komodo/main/scripts/setup-periphery.py -o /tmp/setup-periphery.py
       python3 /tmp/setup-periphery.py --force-service-file
 
-      # Show what units exist (debug)
-      systemctl list-unit-files | grep -i periphery || true
-
-      # Fail early if unit file still not present
-      systemctl list-unit-files | grep -q "^periphery.service" || exit 42
+      # Deterministic check: service file exists
+      test -f /etc/systemd/system/periphery.service
 
       systemctl daemon-reload
       systemctl enable periphery
@@ -197,4 +194,5 @@
     '
   args:
     executable: /bin/bash
+
 

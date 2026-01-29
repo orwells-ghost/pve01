@@ -1,0 +1,23 @@
+- name: Provision servarr Docker-host LXC (CT150)
+  hosts: proxmox
+  gather_facts: false
+  vars:
+    stack_name: "servarr"
+    ct_id: 150
+    ct_hostname: "servarr"
+    ct_ip: "192.168.1.150"
+
+    ct_cores: 2
+    ct_memory_mb: 4096
+    ct_swap_mb: 512
+    ct_rootfs_gb: 8
+
+    # Dataset-per-container (stateful containers in this stack)
+    app_datasets:
+      - "radarr"
+      - "sonarr"
+      - "lidarr"
+      - "prowlarr"
+      - "qbittorrent"
+  roles:
+    - proxmox_lxc_docker_host
