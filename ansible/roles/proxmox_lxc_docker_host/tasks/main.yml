@@ -62,6 +62,24 @@
   args:
     executable: /bin/bash
 
+- name: Configure additional bind mounts (mp1+)
+  shell: |
+    set -euo pipefail
+    {% for m in extra_mounts | default([]) %}
+    pct set {{ ct_id }} -mp{{ m.slot }} {{ m.host }},mp={{ m.ct }}
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  when: extra_mounts is defined and (extra_mounts | length) > 0
+
+- name: Restart CT to apply mount changes (when extra mounts configured)
+  shell: |
+    set -euo pipefail
+    pct reboot {{ ct_id }}
+  args:
+    executable: /bin/bash
+  when: extra_mounts is defined and (extra_mounts | length) > 0
+
 - name: Start LXC
   shell: |
     set -euo pipefail

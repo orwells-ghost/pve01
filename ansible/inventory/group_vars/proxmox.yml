@@ -18,3 +18,15 @@ lxc_rootfs_storage: "vms"   # where CT rootfs lives
 # Debian template selection: we will auto-detect a template that contains this substring.
 lxc_template_match: "13.1-2"  # variable
 lxc_template_filename: "debian-13-standard_13.1-2_amd64.tar.zst" # lxc template filename
+
+# Media storage (ZFS dataset mounted into CTs, such as servarr stack)
+media_host_path: "/mnt/tank/media"   # host path on pve01
+media_ct_path: "/data"              # mountpoint inside CTs
+media_dirs:
+  - downloads
+  - incomplete
+  - torrents
+  - movies
+  - tv
+  - music
+  - books
