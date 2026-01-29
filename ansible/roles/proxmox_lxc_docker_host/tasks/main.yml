@@ -38,7 +38,7 @@
 - name: Ensure template exists on Proxmox storage
   shell: |
     set -euo pipefail
-    pveam list {{ lxc_ostemplate_storage }} | awk '{print $1}' | grep -Fx "vztmpl/{{ lxc_template_filename }}"
+    pveam list {{ lxc_ostemplate_storage }} | grep -F "{{ lxc_template_filename }}" | tail -n 1
   args:
     executable: /bin/bash
   changed_when: false
