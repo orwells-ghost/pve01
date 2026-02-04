@@ -40,3 +40,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+
+# Github / Copilot
+.github
+
+/docs_old/*
