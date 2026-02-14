@@ -79,5 +79,4 @@ We use pfBlockerNG to provide network-wide ad and malware blocking. Running in *
 - `kb/pfsense/dns-and-security.md`
 
 Proceed to the next file:
--> **[[03-pve-host-baseline.md]]**
-**[03 PVE Host Baseline](./03-pve-host-baseline.md)**
+-> **[03 PVE Host Baseline](./03-pve-host-baseline.md)**
